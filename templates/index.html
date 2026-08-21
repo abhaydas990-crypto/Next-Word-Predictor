@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Trace — Next Word Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <path d="M1 15 C4 15 4 7 7 7 S10 15 13 15 S16 7 21 7" stroke="var(--lstm)" stroke-width="1.6" fill="none"/>
+          <path d="M1 7 C4 7 4 15 7 15 S10 7 13 7 S16 15 21 15" stroke="var(--rnn)" stroke-width="1.6" fill="none" opacity="0.85"/>
+        </svg>
+      </span>
+      <span class="brand-name">Signal&nbsp;Trace</span>
+    </div>
+    <div class="topbar-meta">
+      <span class="meta-chip"><i></i>vocab {{ vocab_size }}</span>
+      <span class="meta-chip"><i></i>window {{ max_sequence_len - 1 }} tokens</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ HERO / LIVE DEMO ============ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">LSTM vs SimpleRNN &middot; live inference</p>
+      <h1>Two networks read your sentence.<br>Watch them <em>disagree</em>.</h1>
+      <p class="hero-sub">
+        Type the start of a sentence from the mentorship-program FAQ this model was trained on,
+        and watch a Bidirectional LSTM and a Bidirectional SimpleRNN each greedily extend it,
+        word by word, in real time.
+      </p>
+
+      <div class="console" role="group" aria-label="Prediction console">
+        <div class="console-input-row">
+          <label class="sr-only" for="seed-input">Seed text</label>
+          <input id="seed-input" type="text" placeholder="e.g. what is the" autocomplete="off" spellcheck="false" />
+          <button id="predict-btn" class="run-btn">
+            <span class="run-btn-label">Run inference</span>
+            <span class="run-btn-icon">&#9656;</span>
+          </button>
+        </div>
+
+        <div class="console-controls">
+          <label for="steps-slider">Words to generate</label>
+          <input id="steps-slider" type="range" min="1" max="10" value="5" />
+          <span id="steps-value" class="steps-value">5</span>
+
+          <div class="quick-seeds" id="quick-seeds">
+            <span class="quick-label">Try:</span>
+            <button type="button" class="quick-seed" data-seed="what is the">what is the</button>
+            <button type="button" class="quick-seed" data-seed="you have to">you have to</button>
+            <button type="button" class="quick-seed" data-seed="will i">will i</button>
+            <button type="button" class="quick-seed" data-seed="yes all our sessions">yes all our sessions</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signature element: dual signal lanes -->
+      <div class="lanes" id="lanes">
+        <div class="lane lane-lstm">
+          <div class="lane-head">
+            <span class="lane-dot"></span>
+            <span class="lane-name">LSTM</span>
+            <span class="lane-tag">Bidirectional &middot; long-term memory gates</span>
+          </div>
+          <div class="lane-track" id="lstm-track">
+            <span class="lane-placeholder">Predicted tokens will trace across here</span>
+          </div>
+          <div class="lane-output" id="lstm-output" aria-live="polite"></div>
+        </div>
+
+        <div class="lane-divider" id="lane-divider">
+          <span id="agreement-label">— run inference to compare —</span>
+        </div>
+
+        <div class="lane lane-rnn">
+          <div class="lane-head">
+            <span class="lane-dot"></span>
+            <span class="lane-name">SimpleRNN</span>
+            <span class="lane-tag">Bidirectional &middot; short-term recall only</span>
+          </div>
+          <div class="lane-track" id="rnn-track">
+            <span class="lane-placeholder">Predicted tokens will trace across here</span>
+          </div>
+          <div class="lane-output" id="rnn-output" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <p id="console-status" class="console-status"></p>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT THINKS ============ -->
+  <section class="section how">
+    <div class="section-inner">
+      <p class="section-eyebrow">Under the hood</p>
+      <h2>Every prediction is a probability, not a fact.</h2>
+      <p class="section-body">
+        Each model doesn't "know" the next word — it scores every word in its vocabulary and
+        the highest-scoring one gets chosen. Click a token above and its runner-up candidates
+        stay visible in the lane, so you can see how confident — or unsure — each architecture was.
+      </p>
+
+      <div class="how-grid">
+        <div class="how-card">
+          <span class="how-index">01</span>
+          <h3>Tokenize</h3>
+          <p>Your sentence is mapped to integer IDs using the same word index the models were trained on. Unseen words become &lt;OOV&gt;.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-index">02</span>
+          <h3>Pad to window</h3>
+          <p>The sequence is left-padded to {{ max_sequence_len - 1 }} tokens, matching the fixed-length input both networks expect.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-index">03</span>
+          <h3>Score the vocabulary</h3>
+          <p>A softmax over {{ vocab_size }} words gives a probability to every possible next word — shown as the bars beneath each token.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-index">04</span>
+          <h3>Append &amp; repeat</h3>
+          <p>The top word is appended to the sentence and fed back in, so the model generates its own continuation one word at a time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MODEL COMPARISON ============ -->
+  <section class="section compare">
+    <div class="section-inner">
+      <p class="section-eyebrow">Architecture</p>
+      <h2>Same data, same recipe, one difference.</h2>
+      <p class="section-body">
+        Both models share an embedding layer, dropout, and dense head. The only swap is the
+        recurrent cell — LSTM's gated memory versus SimpleRNN's plain feedback loop — which is
+        exactly why their predictions start to diverge on longer sentences.
+      </p>
+
+      <div class="table-wrap">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th><span class="th-dot lstm-dot"></span>LSTM</th>
+              <th><span class="th-dot rnn-dot"></span>SimpleRNN</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Recurrent cell</td>
+              <td>Bidirectional LSTM(100) → LSTM(100)</td>
+              <td>Bidirectional SimpleRNN(100) → SimpleRNN(100)</td>
+            </tr>
+            <tr>
+              <td>Embedding dim</td>
+              <td>64</td>
+              <td>64</td>
+            </tr>
+            <tr>
+              <td>Memory mechanism</td>
+              <td>Input / forget / output gates</td>
+              <td>Single tanh feedback loop</td>
+            </tr>
+            <tr>
+              <td>Typical strength</td>
+              <td>Holds context over longer spans</td>
+              <td>Faster, lighter, forgets sooner</td>
+            </tr>
+            <tr>
+              <td>Dense head</td>
+              <td>Dense(100, relu) → Dense(vocab, softmax)</td>
+              <td>Dense(100, relu) → Dense(vocab, softmax)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section about">
+    <div class="section-inner about-inner">
+      <p class="section-eyebrow">About this build</p>
+      <h2>Trained on one mentorship program's FAQ page.</h2>
+      <p class="section-body">
+        The vocabulary here is small and specific by design — {{ vocab_size }} words drawn from
+        a single Q&amp;A corpus — which is exactly what makes the LSTM/RNN gap easy to see. Type
+        phrasing close to that source material for the most confident predictions.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="section-inner footer-inner">
+    <span>Signal Trace — a next-word prediction lab</span>
+    <span class="footer-sep">&middot;</span>
+    <span>Keras / TensorFlow &middot; Flask</span>
+  </div>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
